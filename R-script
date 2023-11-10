@@ -1,0 +1,105 @@
+#IMPORT AND SORT DATA--------------------------------------------------------------------------------------------------------------------------------
+#S&P500
+  #IMPORT HISTORICAL S&P500 DATA
+  SP500<-data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/Modified_HistoricalData.csv")) 
+  
+  #FILTER OUT PERIOD 
+  filtered_SP500 <- subset(SP500, Date >= "2021-01-01" & Date <= "2023-01-01")
+  
+  #DELETE VOLUME COLUMN
+  columns_to_delete <- c("Close.Lasr", "High", "Low", "Close.Last") # Select columns to delete
+  filtered_SP500 <- SP500[, !(colnames(SP500)%in% columns_to_delete)] # Delete the specified columns
+
+#VIX
+  #IMPORT VIX DATA
+  VIX<-data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/VIX.csv"))
+  
+  #DELETE VOLUME COLUMN
+  columns_to_delete <- c("Volume", "High", "Low", "Close", "Adj.Close") # Select columns to delete
+  filtered_VIX <- VIX[, !(colnames(VIX)%in% columns_to_delete)] # Delete the specified columns
+
+#ICI
+  #IMPORT ICI DATA
+  ICI<-data.frame(read.csv("/USers/hugobernhardsson/Desktop/Uppsats/Data/StateStreetICI.csv"))
+
+#TWITTER
+  #IMPORT TWITTER DATA
+  Twitter<-data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/Twitter_Economic_Uncertainty_converted.csv"))
+  
+  #FILTER OUT PERIOD 
+  filtered_twitter <- subset(Twitter, date >= "2021-01-01" & date <= "2023-01-01")
+
+#BONDS
+  #IMPORT 10Y US BOND YIELD
+  BYSUS10Y<-data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/United_States_10_Year_Bond_Yield_Modified.csv"))
+  
+  #DELETE VOLUME COLUMN
+  columns_to_delete <- c("Open", "High", "Low", "Change..") # Select columns to delete
+  filtered_BYSUS10Y <- BYSUS10Y[, !(colnames(BYSUS10Y)%in% columns_to_delete)] # Delete the specified columns
+
+#GOLD
+  #IMPORT GOLD
+  Gold<-data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/XAU_USD_Historical_Data_Fully_Modified.csv"))
+  
+  #DELETE VOLUME COLUMN
+  columns_to_delete <- c("Open", "High", "Low", "Vol.", "Change..") # Select columns to delete
+  filtered_Gold <- Gold[, !(colnames(Gold)%in% columns_to_delete)] # Delete the specified columns
+#PACKAGES--------------------------------------------------------------------------------------------------------------------------------
+#open packages
+library(dplyr)
+library(tidyr)
+library(readr)
+#NORMALIZE--------------------------------------------------------------------------------------------------------------------------------
+#NORMALIZE BONDSPREAD
+filtered_BYSUS10Y$Price <- gsub(",", "", filtered_BYSUS10Y$Price)
+filtered_BYSUS10Y$Price <- as.numeric(filtered_BYSUS10Y$Price)
+filtered_BYSUS10Y$BondSpread_standardized <- (filtered_BYSUS10Y$Price - mean(filtered_BYSUS10Y$Price, na.rm = TRUE)) / sd(filtered_BYSUS10Y$Price, na.rm = TRUE)
+
+#NORMALIZE VIX
+filtered_VIX$Open <- gsub(",", "", filtered_VIX$Open)
+filtered_VIX$Open <- as.numeric(filtered_VIX$Open)
+filtered_VIX$VIX_standardized <- (filtered_VIX$Open - mean(filtered_VIX$Open, na.rm = TRUE)) / sd(filtered_VIX$Open, na.rm = TRUE)
+
+#NORMALIZE GOLD
+filtered_Gold$Price <- gsub(",", "", filtered_Gold$Price)
+filtered_Gold$Price <- as.numeric(filtered_Gold$Price)
+filtered_Gold$Gold_standardized <- (filtered_Gold$Price - mean(filtered_Gold$Price, na.rm = TRUE)) / sd(filtered_Gold$Price, na.rm = TRUE)
+
+#NORMALIZE SP500
+filtered_SP500$Open <- gsub(",", "", filtered_SP500$Open)
+filtered_SP500$Open <- as.numeric(filtered_SP500$Open)
+filtered_SP500$SP500_standardized <- (filtered_SP500$Open - mean(filtered_SP500$Open, na.rm = TRUE)) / sd(filtered_SP500$Open, na.rm = TRUE)
+
+#MERGE DATA AND CALCULATE GRI--------------------------------------------------------------------------------------------------------------------------------
+# Merging all dataframes by Date
+merged_data <- merge(filtered_Gold, filtered_SP500, by="Date")
+merged_data <- merge(merged_data, filtered_VIX, by="Date")
+merged_data <- merge(merged_data, filtered_BYSUS10Y, by="Date")
+
+# Full outer join of dataframes
+merged_data <- merge(filtered_Gold, filtered_SP500, by = "Date", all = TRUE)
+merged_data <- merge(merged_data, filtered_VIX, by = "Date", all = TRUE)
+merged_data <- merge(merged_data, filtered_BYSUS10Y, by = "Date", all = TRUE)
+
+columns_to_delete <- c("Price.x", "Open.x", "Open.y", "Price.y") # Select columns to delete
+filtered_merged_data <- merged_data[, !(colnames(merged_data)%in% columns_to_delete)] # Delete the specified columns
+
+# Calculating GRI as the average of standardized values
+filtered_merged_data$GRI <- rowMeans(filtered_merged_data[, c("Gold_standardized", "SP500_standardized", "VIX_standardized", "BondYield_standardized")], na.rm = TRUE)
+
+filtered_merged_data <- subset(merged_data, Date >= "2021-01-01" & Date <= "2023-01-01")
+# Display the column names of the merged dataframe
+colnames(filtered_merged_data)
+
+
+
+
+
+library(ggplot2)
+
+ggplot(merged_data, aes(x = Date, y = GRI)) +
+  geom_line() +
+  labs(title = "Global Risk Index Over Time", x = "Date", y = "GRI")
+
+# Example: Correlation with a market index
+cor(merged_data$GRI, MarketIndexData$MarketIndex)
