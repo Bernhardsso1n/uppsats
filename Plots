@@ -1,0 +1,42 @@
+#Plotting annualized volatility-------------------------------------------------
+  # Plotting
+  plot(GSPC$Date, GSPC$AnnualizedVolatility, type = 'l', col = 'blue',
+       main = '100-Day Rolling Annualized Volatility of S&P 500',
+       xlab = 'Date', ylab = 'Annualized Volatility (%)')
+  
+  # If your dataset does not have a 'Date' column, you might need to create one
+  # or if it's an xts or zoo object, the index can directly be used for the x-axis
+  library(ggplot2)
+  # Convert your data to a tibble or data frame if it's not already
+  GSPC_df <- as.data.frame(GSPC)
+  # Plotting with ggplot2
+  ggplot(GSPC_df, aes(x = Date, y = AnnualizedVolatility)) +
+    geom_line(color = 'blue') +
+    theme_minimal() +
+    labs(title = '100-Day Rolling Annualized Volatility of S&P 500',
+         x = 'Date', y = 'Annualized Volatility (%)')
+#Plotting model-tests-----------------------------------------------------------
+  #Normal lm
+    plot(model, which=1,2,3,4,5,6)
+  #Log
+    plot(model_log, which=1,2,3,4,5,6)
+  #Sqrt
+  #GLM
+    plot(model_glm, which=1,2,3,4,5,6)
+    plot(model_log_glm, which=1,2,3,4,5,6)
+    plot(model_sqrt_glm, which=1,2,3,4,5,6)    
+    plot(model_poly_glm, which=1,2,3,4,5,6)
+  #WLS
+    plot(model_wls, which=1,2,3,4,5,6)
+  #polynomial term
+    plot(model_pol, which=1,2,3,4,5,6)
+  #Interaction term
+    plot(model_int_1, which=1,2,3,4,5,6)
+    plot(model_int_2, which=1,2,3,4,5,6)
+  #First difference model
+    plot(differenced_model, which=1,2,3,4,5,6)
+  #Best subset regression
+    plot(best_subset, which=1,2,3,4,5,6)
+  #Ridge regression
+    plot(ridge_mod, which=1,2,3,4,5,6)
+    
