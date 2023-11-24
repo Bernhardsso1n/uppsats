@@ -1,0 +1,196 @@
+#OLS REGRESSION--------------------------------------------------------------------------------------------------------------------------------------------------
+#Merge the df:s and create Merged_OLS
+    Merged_OLS <- merge(GSPC, VIX, by="Date", all=TRUE)
+    Merged_OLS <- merge(Merged_OLS, SANFRAN, by="Date", all=TRUE)
+    Merged_OLS <- merge(Merged_OLS, BEX, by="Date", all=TRUE)
+#Rename columns
+    Merged_OLS$VIX <- Merged_OLS$Last.Price
+    Merged_OLS$SANFRAN <- Merged_OLS$News.Sentiment
+    Merged_OLS$BEX <- Merged_OLS$ra_bex_PAPER
+#Remove columns
+    Merged_OLS$Last.Price <- NULL
+    Merged_OLS$News.Sentiment <- NULL
+    Merged_OLS$Rolling100DayVolatility <- NULL
+    Merged_OLS$DailyVolatility <- NULL
+    Merged_OLS$Returns <- NULL
+    Merged_OLS$ra_bex_PAPER <- NULL
+    Merged_OLS$Close.Last <- NULL
+    Merged_OLS$GSPC.Close <- NULL
+#Clean data from NA-values
+    Merged_OLS[is.na(Merged_OLS)] <- "NA"
+    Merged_OLS <- na.omit(Merged_OLS, cols = "GSPC.Close")
+    Merged_OLS <- subset(Merged_OLS, !is.na(GSPC.Close))
+    Merged_OLS <- Merged_OLS[Merged_OLS$GSPC.Close != "NA", ]
+    Merged_OLS <- Merged_OLS[Merged_OLS$BEX != "NA", ]
+#Chr to Num
+    Merged_OLS$VIX <- as.numeric(Merged_OLS$VIX)
+    Merged_OLS$AnnualizedVolatility <- as.numeric(Merged_OLS$AnnualizedVolatility)
+    Merged_OLS$SANFRAN <- as.numeric(Merged_OLS$SANFRAN)
+    Merged_OLS$CI1 <- as.numeric(Merged_OLS$CI1)
+    Merged_OLS$CI2 <- as.numeric(Merged_OLS$CI2)
+    Merged_OLS$BEX <- as.numeric(Merged_OLS$BEX)
+#Set date range
+    Merged_OLS <- subset(Merged_OLS, Date >= "1990-05-24" & Date <= "2023-09-30")
+#Linear regression model, simple
+    model <- lm(AnnualizedVolatility~VIX+SANFRAN+BEX+CI1+CI2, data=Merged_OLS)
+    summary(model)
+    plot(model, which=1,2,3,4,5,6)
+#Test for non-staionarity
+    #Test for non-stationarity - Annualized Volatility
+        ts_data_no_na <- na.omit(Merged_OLS$AnnualizedVolatility)
+        adf_test_result <- adf.test(ts_data_no_na)
+        print(adf_test_result)
+        if (adf_test_result$p.value < 0.05) {
+          cat("The time series is stationary (reject the null hypothesis of a unit root).\n")
+        } else {
+          cat("The time series is non-stationary (fail to reject the null hypothesis of a unit root).\n")
+        }
+    #Test for non-stationarity - VIX
+        ts_data_no_na <- na.omit(Merged_OLS$VIX)
+        adf_test_result <- adf.test(ts_data_no_na)
+        print(adf_test_result)
+        if (adf_test_result$p.value < 0.05) {
+          cat("The time series is stationary (reject the null hypothesis of a unit root).\n")
+        } else {
+          cat("The time series is non-stationary (fail to reject the null hypothesis of a unit root).\n")
+        }
+    #Test for non-stationarity - BEX
+        ts_data_no_na <- na.omit(Merged_OLS$BEX)
+        adf_test_result <- adf.test(ts_data_no_na)
+        print(adf_test_result)
+        if (adf_test_result$p.value < 0.05) {
+          cat("The time series is stationary (reject the null hypothesis of a unit root).\n")
+        } else {
+          cat("The time series is non-stationary (fail to reject the null hypothesis of a unit root).\n")
+        }
+    #Test for non-stationarity - CI1
+        ts_data_no_na <- na.omit(Merged_OLS$CI1)
+        adf_test_result <- adf.test(ts_data_no_na)
+        print(adf_test_result)
+        if (adf_test_result$p.value < 0.05) {
+          cat("The time series is stationary (reject the null hypothesis of a unit root).\n")
+        } else {
+          cat("The time series is non-stationary (fail to reject the null hypothesis of a unit root).\n")
+        }
+    #Test for non-stationarity - CI2
+        ts_data_no_na <- na.omit(Merged_OLS$CI2)
+        adf_test_result <- adf.test(ts_data_no_na)
+        print(adf_test_result)
+        if (adf_test_result$p.value < 0.05) {
+          cat("The time series is stationary (reject the null hypothesis of a unit root).\n")
+        } else {
+          cat("The time series is non-stationary (fail to reject the null hypothesis of a unit root).\n")
+        }
+#Tests--------------------------------------------------------------------------
+#TEST FOR HETEROSKEDASTICITY (BREUSCH-PAGAN)
+    bp_test <- bptest(wald_test)
+    print(bp_test)
+#TEST FOR HETEROSKEDASTICITY (White)
+    white_test <- bptest(model, studentize=FALSE)
+    print(white_test)
+#TEST FOR AUTOCORRELATION
+    dw_test <- dwtest(model)
+    print(dw_test)
+#ROBUST SE
+    robust_se <- sqrt(diag(vcovHC(model, type="HC1")))
+    coeftest(model, vcov=vcovHC, type="HC1")
+#TEST FOR HETEROSKEDASTICITY WITH ROBUST SE
+    wald_test <- waldtest(model, vcov = vcovHC(model, type = "HC1"))
+    print(wald_test)
+    summary(model, vcov=vcocHC(model, type="HC1"))
+#TEST LOG
+# Assuming your data frame is named 'df' and the dependent variable is 'Close.Last'
+    model_original <- lm(AnnualizedVolatility~VIX+SANFRAN+BEX+CI1+CI2, data=Merged_OLS)
+    model_log <- lm(log(AnnualizedVolatility)~log(VIX)+log(SANFRAN)+log(BEX)+CI1+CI2, data=Merged_OLS)
+    residuals_original <- residuals(model_original)
+    residuals_log <- residuals(model_log)
+    par(mfrow = c(2, 2))
+    plot(model_original)
+    par(mfrow = c(2, 2))
+    plot(model_log)
+    summary(model_original)$r.squared
+    summary(model_log)$r.squared
+    AIC(model_original)
+    AIC(model_log)
+    BIC(model_original)
+    BIC(model_log)
+    wald_test_original <- waldtest(model_original, vcov = vcovHC)
+    wald_test_log <- waldtest(model_log, vcov = vcovHC)
+#GENERAL LEAST SQUARE-----------------------------------------------------------
+    model_glm <- glm(differenced_column~Last.Price  + Mid.Price.y + ra_bex_PAPER + CrashIndicator, data = Merged_OLS_df)
+    summary(model_glm)
+    model_log_glm <- glm(differenced_column~log(Last.Price)  + log(Mid.Price.y) + log(ra_bex_PAPER) + CrashIndicator, data = Merged_OLS_df)
+    summary(model_log_glm)
+    model_sqrt_glm <- glm(sqrt(differenced_column)~sqrt(Last.Price)  + sqrt(Mid.Price.y) + sqrt(ra_bex_PAPER) + (CrashIndicator), data = Merged_OLS_df)
+    summary(model_sqrt_glm)
+    model_poly_glm <- glm(poly(differenced_column)~poly(Last.Price) + poly(Mid.Price.y) + poly(ra_bex_PAPER) + poly(CrashIndicator), data = Merged_OLS_df)
+    summary(model_poly_glm)
+#WLS----------------------------------------------------------------------------
+    plot(fitted(model), resid(model), xlab='Fitted Values', ylab='Residuals')
+    abline(0,0)
+    # Fit an OLS model to get initial residuals
+        model_ols <- lm(sqrt(GSPC.Close)~sqrt(Last.Price) + sqrt(Mid.Price.y) + sqrt(ra_bex_PAPER), data = filled_filtered_merged_OLS)
+        summary(model_ols)
+        plot(model_ols, which=5)
+    # Calculate the residuals
+        residuals_ols <- residuals(model_ols)
+    # Calculate the inverse of squared residuals as weights
+    # This also avoids division by zero errors
+        weights <- 1 / (residuals_ols^2 + 1e-8)
+    # Now, ensure that weights are the same length as the dataframe
+        if(length(weights) != nrow(filled_filtered_merged_OLS)) {
+          stop("The length of weights does not match the number of observations")
+        }
+    # Fit the WLS model using the weights
+        model_wls <- lm(log(Close.Last)~log(Last.Price) + log(Mid.Price.y) + log(ra_bex_PAPER), 
+                        data = Merged_OLS, 
+                        weights = weights)
+        summary(model_wls)
+        plot(model_wls, which=5)
+        bptest(model_ols)
+        bptest(model_wls)
+        bptest(model)
+#LOG----------
+    model_log <- lm(differenced_column~log(Last.Price)  + log(Mid.Price.y) + log(ra_bex_PAPER) + CrashIndicator, data = Merged_OLS_df)
+    summary(model_log)
+#Polynomial terms---------------------------------------------------------------
+    model_pol <- lm(lm(GSPC.Close~poly(Last.Price, Mid.Price.x, Price, Mid.Price.y, ra_bex_PAPER, degree=2), data = filled_filtered_merged_OLS))
+    summary(model_pol)
+    plot(model_pol, which=c(1,2,3,4,5))
+#Interaction term---------------------------------------------------------------
+    model_int_1 <- lm(differenced_column~poly(Last.Price*Mid.Price.y*ra_bex_PAPER, degree=2), data = Merged_OLS_df)
+      summary(model_int_1)
+    model_int_2 <- lm(differenced_column~Last.Price+I(Last.Price^2)+Mid.Price.y+I(Mid.Price.y^2)+ra_bex_PAPER+I(ra_bex_PAPER^2), data = Merged_OLS_df)
+      summary(model_int_2)
+#Stepwise regression------------------------------------------------------------
+      full_model <- model <- lm(GSPC.Close~Last.Price + Mid.Price.x + Price + Mid.Price.y + ra_bex_PAPER, data=filtered_merged_OLS)
+      stepwise_model <- step(full_model)
+      install.packages("MASS")
+      library(MASS)
+      full_model <- lm(GSPC.Close~Last.Price + Mid.Price.x + Price + Mid.Price.y + ra_bex_PAPER, data=filtered_merged_OLS)
+      null_model <- lm(GSPC.Close ~ 1, data = filled_filtered_merged_OLS)
+  # Forward selection
+      forward_model <- stepAIC(null_model, scope = list(lower = null_model, upper = full_model), direction = "forward")
+  # Backward elimination
+      backward_model <- stepAIC(full_model, direction = "backward")
+  # Both directions
+      both_model <- stepAIC(full_model, direction = "both")
+#Best Subset Regression
+    install.packages("leaps")
+    library(leaps)
+  # Assuming your_data is your dataframe and dependent_var is your response variable
+    best_subset <- regsubsets(GSPC.Close~Last.Price + Mid.Price.x + Price + Mid.Price.y + ra_bex_PAPER, data=filtered_merged_OLS, nvmax = ncol(filled_filtered_merged_OLS) - 1)
+    summary(best_subset)
+#Ridge regression
+    install.packages("glmnet")
+    library(glmnet)
+  # Assuming predictors are in X and the response is in Y
+    X <- as.matrix(filled_filtered_merged_OLS[, -which(names(filled_filtered_merged_OLS) == "GSPC.Close")])
+    Y <- filled_filtered_merged_OLS$GSPC.Close
+    ridge_mod <- glmnet(X, Y, alpha = 0, lambda = lambda_sequence)
+    plot(ridge_mod)
+#Differenced regression for SP500 data------------------------------------------
+  #First difference of Close.Last
+      Merged_OLS_df$differenced_column <- c(NA, diff(Merged_OLS$Close.Last))
+      differenced_model <- lm(differenced_column~Last.Price + Mid.Price.y + ra_bex_PAPER, data = Merged_OLS_df)
+      summary(differenced_model)
