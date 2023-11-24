@@ -1,0 +1,168 @@
+#PACKAGES-------------------------------------------------------------------------------------------------------------------------------------------------------
+    library(dplyr)
+    library(tidyr) 
+    library(readr)
+    library(ggplot2)
+    library(scales)
+    library(zoo)
+    library(sandwich)
+    library(tidyr)
+    library(lmtest)
+    library(tseries)
+    library(plm)
+    library(quantmod)
+    library(FinancialInstrument)
+#IMPORT DATA--------------------------------------------------------------------
+    #S&P500
+        getSymbols(Symbols = "^GSPC", from="1990-01-01", to="2023-11-01", src="yahoo")
+        GSPC <- data.frame(Date = index(GSPC), coredata(GSPC))
+        columns_to_delete_GSPC <- c("GSPC.Open", "GSPC.High", "GSPC.Low", "GSPC.Volume", "GSPC.Adjusted")
+        GSPC <- GSPC[, !(colnames(GSPC)%in% columns_to_delete_GSPC)]
+    #VIX
+        VIX<-data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/VOLATILITY_INDEX.csv", sep = ";"))
+        VIX$Date <- as.Date(as.character(VIX$Date), format="%Y%m%d")
+    #SAN FRAN NEWS SENTIMENT INDEX-
+    #SANFRAN <- read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/SAN_FRAN_NEWS_SENTIMENT.csv", sep=";")
+        SANFRAN <- read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/sanfranfed.csv", sep=";")
+        SANFRAN$Date <- as.Date(as.character(SANFRAN$date), format="%Y-%m-%d")
+        SANFRAN$date <- NULL
+    #BEKAERT-ENGSTROM-XU U.S. RISK AVERSION INDEX
+        BEX <- data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/BEX_INDEX_converted.csv"))
+        BEX$yyyymmdd <- as.Date(as.character(BEX$yyyymmdd), format="%Y%m%d")
+        BEX$Date <- BEX$yyyymmdd
+        columns_to_delete_BEX <- c("unc_bex_PAPER", "unc_bex_AnnualVolPercentage", "yyyymmdd")
+        BEX <- BEX[, !(colnames(BEX)%in% columns_to_delete_BEX)]
+    #US10YBS
+        US10YBS <- data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/USGG10YR.csv"))
+        US10YBS$Date <- as.Date(US10YBS$Date)
+#IDENTIFY CRASH PERIODS--------------------------------------------------------
+# Load the required libraries
+library(dplyr)
+GSPC$Close.Last <- GSPC$GSPC.Close
+# Define a function to identify market crashes
+identify_market_crashes <- function(GSPC) {
+  # Initialize variables
+  crashes <- list()
+  peak_index <- NULL
+  bottom_index <- NULL
+  min_drawdown <- -0.15  # Minimum drawdown threshold
+  
+  # Iterate through the data to identify market crashes
+  for (i in 2:(nrow(GSPC) - 1)) {
+    if (is.null(peak_index)) {
+      # Search for the peak
+      if (GSPC$Close.Last[i] > GSPC$Close.Last[i - 1] && GSPC$Close.Last[i] > GSPC$Close.Last[i + 1]) {
+        peak_index <- i
+      }
+    } else {
+      # Calculate the drawdown
+      drawdown <- (GSPC$Close.Last[i] - GSPC$Close.Last[peak_index]) / GSPC$Close.Last[peak_index]
+      
+      if (drawdown <= min_drawdown) {
+        # If drawdown is at least -20%, continue tracking the lowest point
+        if (is.null(bottom_index) || GSPC$Close.Last[i] < GSPC$Close.Last[bottom_index]) {
+          bottom_index <- i
+        }
+      }
+      
+      # Check for a new peak, which signals the end of the current drawdown period
+      if (GSPC$Close.Last[i] > GSPC$Close.Last[peak_index]) {
+        if (!is.null(bottom_index)) {
+          # Record the crash data if a bottom has been identified
+          crash_data <- list(Start = GSPC[peak_index, c("Date", "Close.Last")], End = GSPC[bottom_index, c("Date", "Close.Last")])
+          crashes[[length(crashes) + 1]] <- crash_data
+        }
+        # Reset for the next crash
+        peak_index <- NULL
+        bottom_index <- NULL
+      }
+    }
+  }
+  
+  # Check if a crash is still being tracked at the end of the data
+  if (!is.null(peak_index) && !is.null(bottom_index)) {
+    crash_data <- list(Start = GSPC[peak_index, c("Date", "Close.Last")], End = GSPC[bottom_index, c("Date", "Close.Last")])
+    crashes[[length(crashes) + 1]] <- crash_data
+  }
+  
+  return(crashes)
+}
+
+# Use the function to identify market crash bottoms
+crashes <- identify_market_crashes(GSPC)
+
+# Print the results for each crash
+if (length(crashes) > 0) {
+  for (i in 1:length(crashes)) {
+    cat("Market Crash", i, ":\n")
+    cat("Start:\n")
+    print(crashes[[i]]$Start)
+    cat("End:\n")
+    print(crashes[[i]]$End)
+    cat("\n")
+  }
+} else {
+  cat("No market crashes identified according to the criteria.")
+}
+
+# Assuming reversed_SP500 is your dataset and 'crashes' contains the identified crashes
+
+# Create a new column for the crash indicator, initialized to 0
+GSPC$CI1 <- 0
+GSPC$CI2 <- 0
+
+# Function to set the crash indicator
+set_crash_indicator <- function(crash_data, data) {
+  start_date <- crash_data$Start$Date
+  end_date <- crash_data$End$Date
+  
+  # Set 1 for the period from 365 trading days before the start date to the start date
+  data$CI1[data$Date %in% seq(as.Date(start_date) - 365, as.Date(start_date) - 1, by="day")] <- 1
+  
+  # Set 2 for the crash period itself
+  data$CI2[data$Date %in% seq(as.Date(start_date), as.Date(end_date), by="day")] <- 2
+  
+  return(data)
+}
+
+# Apply the function for each identified crash
+for (crash in crashes) {
+  GSPC <- set_crash_indicator(crash, GSPC)
+}
+
+# Now reversed_SP500 contains a CrashIndicator column with 1s for the 12 months leading up to the crash, 2s for the crash period, and 0s otherwise
+
+#CALCULATE VOLATILITY GSPC------------------------------------------------------
+  # Calculate daily log returns (as percentage)
+      returns <- diff(log(GSPC$GSPC.Close)) * 100  # Convert to percentage
+  # Handle NA for the first value
+      GSPC$Returns <- c(NA, returns)
+  # Define the rolling window size (100 days)
+      window_size <- 100
+  # Calculate rolling standard deviation of returns (daily volatility)
+      GSPC$Rolling100DayVolatility <- rollapply(GSPC$Returns, width = window_size, FUN = sd, fill = NA, align = 'right')
+  # Annualize the volatility (assuming 252 trading days in a year)
+      GSPC$AnnualizedVolatility <- GSPC$Rolling100DayVolatility * sqrt(252)
+#EXPORT DATA FOR STATA AND EVIEWS-----------------------------------------------
+#Clean data by days
+    Merged_OLS <- subset(Merged_OLS, Date >= "1990-05-24" & Date <= "2023-09-30")
+#renamne columns
+    Merged_OLS$VIX <- Merged_OLS$Last.Price
+    Merged_OLS$SANFRAN <- Merged_OLS$Mid.Price
+    Merged_OLS$BEX <- Merged_OLS$ra_bex_PAPER
+    Merged_OLS$Last.Price <- NULL
+    Merged_OLS$Mid.Price <- NULL
+    Merged_OLS$Rolling100DayVolatility <- NULL
+    Merged_OLS$DailyVolatility <- NULL
+    Merged_OLS$Returns <- NULL
+    Merged_OLS$ra_bex_PAPER <- NULL
+    Merged_OLS[is.na(Merged_OLS)] <- "NA"
+    Merged_OLS <- na.omit(Merged_OLS, cols = "GSPC.Close")
+    Merged_OLS <- subset(Merged_OLS, !is.na(GSPC.Close))
+    Merged_OLS <- Merged_OLS[Merged_OLS$GSPC.Close != "NA", ]
+    Merged_OLS <- Merged_OLS[Merged_OLS$BEX != "NA", ]
+# Assuming your data frame is named df
+    Merged_OLS$BEX <- na.approx(Merged_OLS$BEX, na.rm = FALSE, rule = 2)
+    Merged_OLS$SANFRAN <- -Merged_OLS$SANFRAN
+    EXPORT <- Merged_OLS 
+    write_csv(EXPORT, "/Users/hugobernhardsson/Desktop/Uppsats/EXPORT.csv")
