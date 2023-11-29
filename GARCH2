@@ -1,0 +1,171 @@
+#Convert to XTS
+  Merged_OLS_xts <- xts(Merged_OLS, order.by = Merged_OLS$Date)
+  Merged_OLS_xts$Date <- NULL
+#Packages
+  install.packages("rugarch")
+  install.packages("tseries")
+  library(rugarch)
+  library(tseries)
+#Test for stationarity
+  adf.test(Merged_OLS_xts$VIX)
+  adf.test(Merged_OLS_xts$BEX)
+  adf.test(Merged_OLS_xts$BONDS)
+  adf.test(Merged_OLS_xts$AnnualizedVolatility)
+  adf.test(Merged_OLS_xts$SANFRAN)
+  
+  spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                     mean.model = list(armaOrder = c(1, 1), include.mean = TRUE),
+                     distribution.model = "norm")  # Use "sstd" for std Student's t-distribution
+  fit <- ugarchfit(spec, data(Merged_OLS$AnnualizedVolatility))
+  fit <- ugarchfit(spec, data = Merged_OLS_xts$AnnualizedVolatility)
+  
+  plot(fit)
+  forecast <- ugarchforecast(fit, n.ahead=365)
+  print(forecast)
+  plot(forecast)
+
+# Test with multiple variables
+  spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                     mean.model = list(armaOrder = c(1, 1), 
+                                       include.mean = TRUE, 
+                                       external.regressors = as.matrix(Merged_OLS_xts[, c("BEX", "VIX")])),
+                     distribution.model = "norm")
+  fit <- ugarchfit(spec = spec, data = Merged_OLS_xts$AnnualizedVolatility)
+  
+  fit <- ugarchfit(spec = spec, 
+                   data = Merged_OLS_xts$AnnualizedVolatility, 
+                   solver = 'hybrid',  # changing solver
+                   control = list(maxiter = 1000,  # increasing max iterations
+                                  delta = 1e-6))  # adjusting convergence tolerance
+
+# ARMA-GARCH model
+  
+  library(rugarch)
+  p <- 39
+  q <- 40
+  
+  spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                     mean.model = list(armaOrder = c(p, q), 
+                                       include.mean = TRUE, 
+                                       external.regressors = as.matrix(Merged_OLS_xts[, c("BEX", "VIX")])),
+                     distribution.model = "norm")  # or "norm", "sstd", etc.
+  
+  fit <- ugarchfit(spec = spec, data = Merged_OLS_xts$AnnualizedVolatility)
+  plot(fit)
+  
+
+# Compute and plot ACF
+  acf_result <- acf(Merged_OLS$AnnualizedVolatility, lag.max = 20, plot = TRUE)
+  pacf_result <- pacf(Merged_OLS$AnnualizedVolatility, lag.max = 20, plot = TRUE)
+  
+  
+  spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1), start.pars = c(1, 1)),
+                     mean.model = list(armaOrder = c(p, q), 
+                                       include.mean = TRUE, 
+                                       external.regressors = as.matrix(Merged_OLS_xts[, c("BEX", "VIX")])),
+                     distribution.model = "norm")
+
+# Define solver control parameters separately
+  solver.control <- list(trace = 1, REPORT = 1, reltol = 1e-6, maxit = 1000)
+  
+  # Create the GARCH specification
+  spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                     mean.model = list(armaOrder = c(p, q), 
+                                       include.mean = TRUE, 
+                                       external.regressors = as.matrix(Merged_OLS_xts[, c("BEX", "VIX")])),
+                     distribution.model = "norm",
+                     solver = solver.control)  # Pass the solver control list here
+#-------------------------------------------------------------------------------
+  library(rugarch)
+  
+  spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                     mean.model = list(armaOrder = c(p, q),  # replace p and q with chosen orders
+                                       include.mean = TRUE, 
+                                       external.regressors = as.matrix(Merged_OLS_xts[, c("VIX", "SANFRAN", "BEX", "CI1", "CI2")])),
+                     distribution.model = "sstd")  # or another appropriate distribution
+  
+  forecast <- ugarchforecast(fit, n.ahead = 365, 
+                             external.forecasts = list( 
+                               mxreg = vix_forecast, 
+                               n.ahead = 365))
+  
+  
+  install.packages("forecast")
+  library(forecast)
+  arima_model <- auto.arima(VIX$Last.Price)
+  checkresiduals(arima_model)
+  
+  vix_forecast <- forecast(arima_model, h = 1000)  # 'h' is the number of periods to forecast
+  plot(vix_forecast)
+
+
+################################################################################
+  your_time_series_data <- Merged_OLS_xts$AnnualizedVolatility
+  
+  spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                     mean.model = list(armaOrder = c(1, 1), 
+                                       include.mean = TRUE, 
+                                       external.regressors = matrix_of_external_regressors),
+                     distribution.model = "sstd")
+  
+  fit <- ugarchfit(spec = spec, data = your_time_series_data)
+  
+  residuals <- residuals(fit)
+  plot(residuals)
+  
+  print(length(residuals))
+
+
+# Ensure the matrix dimensions match
+  print(dim(matrix_of_external_regressors))  # Should match the length of your time series data
+
+################################################################################
+# Select only the external regressors
+  external_regressors <- Merged_OLS_xts[, c("CI1", "CI2", "VIX", "SANFRAN", "BEX")]
+
+# Ensure that it is a matrix
+  matrix_of_external_regressors <- as.matrix(external_regressors)
+  
+  library(rugarch)
+  
+  spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                     mean.model = list(armaOrder = c(1, 1), 
+                                       include.mean = TRUE, 
+                                       external.regressors = matrix_of_external_regressors),
+                     distribution.model = "sstd")
+  
+  
+  your_time_series_data <- Merged_OLS_xts$AnnualizedVolatility
+  
+  fit <- ugarchfit(spec = spec, data = your_time_series_data)
+
+# Check model summary
+summary(fit)
+
+# Residual diagnostics
+residuals <- residuals(fit)
+plot(residuals)
+acf(residuals)
+Box.test(residuals, lag = 20, type = "Ljung-Box")
+
+##################
+  spec <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                     mean.model = list(armaOrder = c(1, 1), 
+                                       include.mean = TRUE),
+                     distribution.model = "sstd")
+  
+  fit <- ugarchfit(spec = spec, data = your_time_series_data, solver = 'hybrid')
+  
+  control <- list(maxiter = 10000, delta = 1e-8)
+  fit <- ugarchfit(spec = spec, data = your_time_series_data, solver = 'hybrid', control = control)
+  
+  summary(fit)
+  residuals <- residuals(fit)
+  plot(residuals)
+  acf(residuals)
+  Box.test(residuals, lag=20, type = "Ljung-Box")
+  
+  fit@fit$coef
+  fit@fit$sigma
+  fit@fit$z
+

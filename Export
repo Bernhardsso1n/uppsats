@@ -1,0 +1,23 @@
+#EXPORT DATA FOR STATA AND EVIEWS-----------------------------------------------
+#Clean data by days
+    Merged_OLS <- subset(Merged_OLS, Date >= "1990-05-24" & Date <= "2023-09-30")
+#renamne columns
+    Merged_OLS$VIX <- Merged_OLS$Last.Price
+    Merged_OLS$SANFRAN <- Merged_OLS$Mid.Price
+    Merged_OLS$BEX <- Merged_OLS$ra_bex_PAPER
+    Merged_OLS$Last.Price <- NULL
+    Merged_OLS$Mid.Price <- NULL
+    Merged_OLS$Rolling100DayVolatility <- NULL
+    Merged_OLS$DailyVolatility <- NULL
+    Merged_OLS$Returns <- NULL
+    Merged_OLS$ra_bex_PAPER <- NULL
+    Merged_OLS[is.na(Merged_OLS)] <- "NA"
+    Merged_OLS <- na.omit(Merged_OLS, cols = "GSPC.Close")
+    Merged_OLS <- subset(Merged_OLS, !is.na(GSPC.Close))
+    Merged_OLS <- Merged_OLS[Merged_OLS$GSPC.Close != "NA", ]
+    Merged_OLS <- Merged_OLS[Merged_OLS$BEX != "NA", ]
+# Assuming your data frame is named df
+    Merged_OLS$BEX <- na.approx(Merged_OLS$BEX, na.rm = FALSE, rule = 2)
+    Merged_OLS$SANFRAN <- -Merged_OLS$SANFRAN
+    EXPORT <- Merged_OLS 
+    write_csv(EXPORT, "/Users/hugobernhardsson/Desktop/Uppsats/EXPORT.csv")

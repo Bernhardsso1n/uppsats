@@ -1,36 +1,4 @@
 #OLS REGRESSION--------------------------------------------------------------------------------------------------------------------------------------------------
-#Merge the df:s and create Merged_OLS
-    Merged_OLS <- merge(GSPC, VIX, by="Date", all=TRUE)
-    Merged_OLS <- merge(Merged_OLS, SANFRAN, by="Date", all=TRUE)
-    Merged_OLS <- merge(Merged_OLS, BEX, by="Date", all=TRUE)
-#Rename columns
-    Merged_OLS$VIX <- Merged_OLS$Last.Price
-    Merged_OLS$SANFRAN <- Merged_OLS$News.Sentiment
-    Merged_OLS$BEX <- Merged_OLS$ra_bex_PAPER
-#Remove columns
-    Merged_OLS$Last.Price <- NULL
-    Merged_OLS$News.Sentiment <- NULL
-    Merged_OLS$Rolling100DayVolatility <- NULL
-    Merged_OLS$DailyVolatility <- NULL
-    Merged_OLS$Returns <- NULL
-    Merged_OLS$ra_bex_PAPER <- NULL
-    Merged_OLS$Close.Last <- NULL
-    Merged_OLS$GSPC.Close <- NULL
-#Clean data from NA-values
-    Merged_OLS[is.na(Merged_OLS)] <- "NA"
-    Merged_OLS <- na.omit(Merged_OLS, cols = "GSPC.Close")
-    Merged_OLS <- subset(Merged_OLS, !is.na(GSPC.Close))
-    Merged_OLS <- Merged_OLS[Merged_OLS$GSPC.Close != "NA", ]
-    Merged_OLS <- Merged_OLS[Merged_OLS$BEX != "NA", ]
-#Chr to Num
-    Merged_OLS$VIX <- as.numeric(Merged_OLS$VIX)
-    Merged_OLS$AnnualizedVolatility <- as.numeric(Merged_OLS$AnnualizedVolatility)
-    Merged_OLS$SANFRAN <- as.numeric(Merged_OLS$SANFRAN)
-    Merged_OLS$CI1 <- as.numeric(Merged_OLS$CI1)
-    Merged_OLS$CI2 <- as.numeric(Merged_OLS$CI2)
-    Merged_OLS$BEX <- as.numeric(Merged_OLS$BEX)
-#Set date range
-    Merged_OLS <- subset(Merged_OLS, Date >= "1990-05-24" & Date <= "2023-09-30")
 #Linear regression model, simple
     model <- lm(AnnualizedVolatility~VIX+SANFRAN+BEX+CI1+CI2, data=Merged_OLS)
     summary(model)
