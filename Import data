@@ -12,32 +12,37 @@
     library(plm)
     library(quantmod)
     library(FinancialInstrument)
+    library(rugarch)
+    library(xts)
+    library(tseries)
 #IMPORT DATA--------------------------------------------------------------------
     #S&P500
         getSymbols(Symbols = "^GSPC", from="1990-01-01", to="2023-11-01", src="yahoo")
         GSPC <- data.frame(Date = index(GSPC), coredata(GSPC))
         columns_to_delete_GSPC <- c("GSPC.Open", "GSPC.High", "GSPC.Low", "GSPC.Volume", "GSPC.Adjusted")
         GSPC <- GSPC[, !(colnames(GSPC)%in% columns_to_delete_GSPC)]
+         GSPC <- xts(GSPC, order.by = GSPC$Date)
     #VIX
         VIX<-data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/VOLATILITY_INDEX.csv", sep = ";"))
         VIX$Date <- as.Date(as.character(VIX$Date), format="%Y%m%d")
+          VIX <- xts(VIX, order.by = VIX$Date)
     #SAN FRAN NEWS SENTIMENT INDEX-
-    #SANFRAN <- read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/SAN_FRAN_NEWS_SENTIMENT.csv", sep=";")
         SANFRAN <- read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/sanfranfed.csv", sep=";")
         SANFRAN$Date <- as.Date(as.character(SANFRAN$date), format="%Y-%m-%d")
         SANFRAN$date <- NULL
+        SANFRAN <- xts(SANFRAN, order.by = SANFRAN$Date)
     #BEKAERT-ENGSTROM-XU U.S. RISK AVERSION INDEX
         BEX <- data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/BEX_INDEX_converted.csv"))
         BEX$yyyymmdd <- as.Date(as.character(BEX$yyyymmdd), format="%Y%m%d")
         BEX$Date <- BEX$yyyymmdd
         columns_to_delete_BEX <- c("unc_bex_PAPER", "unc_bex_AnnualVolPercentage", "yyyymmdd")
         BEX <- BEX[, !(colnames(BEX)%in% columns_to_delete_BEX)]
+        BEX <- xts(BEX, order.by = BEX$Date) 
     #US10YBS
         US10YBS <- data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/USGG10YR.csv"))
         US10YBS$Date <- as.Date(US10YBS$Date)
+        US10YBS<- xts(US10YBS, order.by = US10YBS$Date)
 #IDENTIFY CRASH PERIODS--------------------------------------------------------
-# Load the required libraries
-library(dplyr)
 GSPC$Close.Last <- GSPC$GSPC.Close
 # Define a function to identify market crashes
 identify_market_crashes <- function(GSPC) {
@@ -143,26 +148,42 @@ for (crash in crashes) {
       GSPC$Rolling100DayVolatility <- rollapply(GSPC$Returns, width = window_size, FUN = sd, fill = NA, align = 'right')
   # Annualize the volatility (assuming 252 trading days in a year)
       GSPC$AnnualizedVolatility <- GSPC$Rolling100DayVolatility * sqrt(252)
-#EXPORT DATA FOR STATA AND EVIEWS-----------------------------------------------
-#Clean data by days
-    Merged_OLS <- subset(Merged_OLS, Date >= "1990-05-24" & Date <= "2023-09-30")
-#renamne columns
-    Merged_OLS$VIX <- Merged_OLS$Last.Price
-    Merged_OLS$SANFRAN <- Merged_OLS$Mid.Price
-    Merged_OLS$BEX <- Merged_OLS$ra_bex_PAPER
-    Merged_OLS$Last.Price <- NULL
-    Merged_OLS$Mid.Price <- NULL
-    Merged_OLS$Rolling100DayVolatility <- NULL
-    Merged_OLS$DailyVolatility <- NULL
-    Merged_OLS$Returns <- NULL
-    Merged_OLS$ra_bex_PAPER <- NULL
-    Merged_OLS[is.na(Merged_OLS)] <- "NA"
-    Merged_OLS <- na.omit(Merged_OLS, cols = "GSPC.Close")
-    Merged_OLS <- subset(Merged_OLS, !is.na(GSPC.Close))
-    Merged_OLS <- Merged_OLS[Merged_OLS$GSPC.Close != "NA", ]
-    Merged_OLS <- Merged_OLS[Merged_OLS$BEX != "NA", ]
-# Assuming your data frame is named df
-    Merged_OLS$BEX <- na.approx(Merged_OLS$BEX, na.rm = FALSE, rule = 2)
-    Merged_OLS$SANFRAN <- -Merged_OLS$SANFRAN
-    EXPORT <- Merged_OLS 
-    write_csv(EXPORT, "/Users/hugobernhardsson/Desktop/Uppsats/EXPORT.csv")
+#CREATE THE MERGED DF-----------------------------------------------
+
+  #Merge the df:s and create Merged_OLS
+      Merged_OLS <- merge(GSPC, VIX, by="Date", all=TRUE)
+      Merged_OLS <- merge(Merged_OLS, SANFRAN, by="Date", all=TRUE)
+      Merged_OLS <- merge(Merged_OLS, BEX, by="Date", all=TRUE)
+      Merged_OLS <- merge(Merged_OLS, US10YBS, by="Date", all=TRUE)
+  #Rename columns
+      Merged_OLS$VIX <- Merged_OLS$Last.Price
+      Merged_OLS$SANFRAN <- Merged_OLS$News.Sentiment
+      Merged_OLS$BEX <- Merged_OLS$ra_bex_PAPER
+      Merged_OLS$BONDS <- Merged_OLS$Bond.Price
+  #Remove columns
+      Merged_OLS$Last.Price <- NULL
+      Merged_OLS$News.Sentiment <- NULL
+      Merged_OLS$Rolling100DayVolatility <- NULL
+      Merged_OLS$DailyVolatility <- NULL
+      Merged_OLS$Returns <- NULL
+      Merged_OLS$ra_bex_PAPER <- NULL
+      Merged_OLS$Close.Last <- NULL
+      Merged_OLS$GSPC.Close <- NULL
+      Merged_OLS$Bond.Price <- NULL
+  #Set date range
+      Merged_OLS <- subset(Merged_OLS, Date >= "1990-05-24" & Date <= "2023-09-30")
+  #Clean data from NA-values
+      Merged_OLS[is.na(Merged_OLS)] <- "NA"
+      Merged_OLS <- na.omit(Merged_OLS, cols = "AnnualizedVolatility")
+      Merged_OLS <- subset(Merged_OLS, !is.na(AnnualizedVolatility))
+      Merged_OLS <- Merged_OLS[Merged_OLS$AnnualizedVolatility != "NA", ]
+      Merged_OLS <- Merged_OLS[Merged_OLS$BEX != "NA", ]
+      Merged_OLS <- Merged_OLS[Merged_OLS$BONDS != "NA", ]
+  #Chr to Num
+      Merged_OLS$VIX <- as.numeric(Merged_OLS$VIX)
+      Merged_OLS$AnnualizedVolatility <- as.numeric(Merged_OLS$AnnualizedVolatility)
+      Merged_OLS$SANFRAN <- as.numeric(Merged_OLS$SANFRAN)
+      Merged_OLS$CI1 <- as.numeric(Merged_OLS$CI1)
+      Merged_OLS$CI2 <- as.numeric(Merged_OLS$CI2)
+      Merged_OLS$BEX <- as.numeric(Merged_OLS$BEX)
+      Merged_OLS$BONDS <- as.numeric(Merged_OLS$BONDS)
