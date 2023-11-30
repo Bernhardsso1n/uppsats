@@ -39,7 +39,7 @@
         BEX <- BEX[, !(colnames(BEX)%in% columns_to_delete_BEX)]
         BEX <- xts(BEX, order.by = BEX$Date) 
     #US10YBS
-        US10YBS <- data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/USGG10YR.csv"))
+        US10YBS <- data.frame(read.csv("/Users/hugobernhardsson/Desktop/Uppsats/Data/USGG10YR.csv", sep=";"))
         US10YBS$Date <- as.Date(US10YBS$Date)
         US10YBS<- xts(US10YBS, order.by = US10YBS$Date)
 #IDENTIFY CRASH PERIODS--------------------------------------------------------
@@ -125,7 +125,7 @@ set_crash_indicator <- function(crash_data, data) {
   data$CI1[data$Date %in% seq(as.Date(start_date) - 365, as.Date(start_date) - 1, by="day")] <- 1
   
   # Set 2 for the crash period itself
-  data$CI2[data$Date %in% seq(as.Date(start_date), as.Date(end_date), by="day")] <- 2
+  data$CI2[data$Date %in% seq(as.Date(start_date), as.Date(end_date), by="day")] <- 1
   
   return(data)
 }
@@ -135,7 +135,7 @@ for (crash in crashes) {
   GSPC <- set_crash_indicator(crash, GSPC)
 }
 
-# Now reversed_SP500 contains a CrashIndicator column with 1s for the 12 months leading up to the crash, 2s for the crash period, and 0s otherwise
+# Now reversed_SP500 contains a CrashIndicator column with 1s for the 12 months leading up to the crash, 1s for the crash period, and 0s otherwise
 
 #CALCULATE VOLATILITY GSPC------------------------------------------------------
   # Calculate daily log returns (as percentage)
