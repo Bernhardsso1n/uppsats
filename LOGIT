@@ -1,0 +1,116 @@
+#Specify out of sample data
+Merged_OLS_OOS <- subset(Merged_OLS, Date >= "2010-01-02" & Date <= "2023-01-04")
+Merged_OLS_IS <- subset(Merged_OLS, Date >= "1990-05-24" & Date <= "2010-01-01")
+
+model <- glm(CI2 ~ + VIX + SANFRAN + BEX, data = Merged_OLS_IS, family = binomial(link = "logit"))
+summary(model)
+
+
+# Calculate the log-odds using the coefficients from your model
+log_odds_intercept <- coef(model)["(Intercept)"]
+log_odds_VIX <- coef(model)["VIX"] * Merged_OLS_OOS$VIX
+log_odds_SANFRAN <- coef(model)["SANFRAN"] * Merged_OLS_OOS$SANFRAN
+log_odds_BEX <- coef(model)["BEX"] * Merged_OLS_OOS$BEX
+log_odds_all <- coef(model)["(Intercept)"] + coef(model)["VIX"] * Merged_OLS_OOS$VIX + coef(model)["SANFRAN"] * Merged_OLS_OOS$SANFRAN + coef(model)["BEX"] * Merged_OLS_OOS$BEX
+# Convert log-odds to probability
+probability_VIX <- 1 / (1 + exp(-log_odds_VIX))
+probability_SANFRAN <- 1 / (1 + exp(-log_odds_SANFRAN))
+probability_BEX <- 1 / (1 + exp(-log_odds_BEX))
+probability_all <- 1 / (1 + exp(-log_odds_all))
+print(probability_VIX)
+print(probability_SANFRAN)
+print(probability_BEX)
+# The 'probability' variable now contains the probability of a market crash for the new observation.
+plot(probability_BEX)
+plot(probability_SANFRAN)
+plot(probability_VIX)
+
+# Define the start and end dates
+dates <- Merged_OLS_OOS$Date
+# Create a data frame
+data_df <- data.frame(Date = as.Date(dates), Probability = probability_VIX)
+# Create a time series plot
+ggplot(data_df, aes(x = Date, y = Probability)) +
+  geom_line() +  # Line plot
+  labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
+
+
+# Create a data frame
+data_df_BEX <- data.frame(Date = as.Date(dates), Probability = probability_SANFRAN)
+data_df_all <- data.frame(Date = as.Date(dates), Probability = probability_all)
+
+# Create a time series plot
+ggplot(data_df_BEX, aes(x = Date, y = Probability)) +
+  geom_line() +  # Line plot
+  labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
+
+# Assuming you have a data frame 'sp500_data' with 'Date' and 'Price' columns, and 'data_df' with 'Date' and 'Probability' columns
+
+# Load the ggplot2 library if not already loaded
+library(ggplot2)
+
+# Specify the start and end dates
+start_date <- as.Date("2010-01-02")
+end_date <- as.Date("2023-01-04")
+
+# Subset the GSPC data frame to include only the desired date range
+GSPC_subset <- GSPC[GSPC$Date >= start_date & GSPC$Date <= end_date, ]
+
+
+# Create a plot with two y-axes
+p <- ggplot() +
+  geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
+  geom_line(data = data_df_BEX, aes(x = Date, y = Probability), color = "red", linetype = "solid") +
+  scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~., name = "Probability")) +
+  labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
+
+# Print the plot
+print(p)
+
+
+
+# Load the ggplot2 library if not already loaded
+library(ggplot2)
+
+# Create a data frame with your data
+# 'GSPC_subset' contains the S&P 500 prices, and 'data_df_BEX' contains the probabilities
+
+# Create the plot BEX
+p <- ggplot() +
+  geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
+  geom_line(data = data_df_BEX, aes(x = Date, y = Probability * 100), color = "red", linetype = "solid") +  # Scale Probability to match the S&P 500 scale
+  scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~./100, name = "Probability")) +  # Scale the secondary axis back to the original range
+  labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
+
+# Print the plot
+print(p)
+
+# Create the plot all
+p <- ggplot() +
+  geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
+  geom_line(data = data_df_all, aes(x = Date, y = Probability * 20), color = "red", linetype = "solid") +  # Scale Probability to match the S&P 500 scale
+  scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~./100, name = "Probability")) +  # Scale the secondary axis back to the original range
+  labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
+
+# Print the plot
+print(p)
+
+window_size <- 100
+data_df_all$Smoothed_Probability <- zoo::rollmean(data_df_all$Probability, k = window_size, align = "center", fill = NA)
+
+p_smooth <- ggplot() + geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), 
+             color = "blue", linetype = "solid") + 
+             geom_line(data = data_df_all, 
+              aes(x = Date, y = Smoothed_Probability * 20), 
+              color = "red", linetype = "solid") + 
+              scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~./100, name = "Probability"))  + 
+              labs(x = "Date", title = "S&P 500 Price and Probability Over Time") +
+  geom_vline(xintercept = as.Date("2018-10-03"), color = "green", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2020-02-19"), color = "green", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2022-01-03"), color = "green", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2018-12-24"), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2020-03-23"), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2022-10-12"), color = "red", linetype = "dashed")
+  
+print(p_smooth)
+
