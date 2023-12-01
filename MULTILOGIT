@@ -1,0 +1,282 @@
+# Load necessary libraries
+library(nnet)
+library(ggplot2)
+library(zoo) # for rolling means
+
+#-CREATING THE MULTILOGIT------
+
+# 1. Prepare the Data
+Merged_OLS$CI_Combined <- with(Merged_OLS, ifelse(CI2 == 1, 2, CI1))
+Merged_OLS$CI_Combined <- as.factor(Merged_OLS$CI_Combined)
+
+# Split data into training (in-sample) and testing (out-of-sample)
+training_set <- subset(Merged_OLS, Date >= "2019-01-01")
+testing_set <- subset(Merged_OLS, Date >= "2019-01-02")
+
+# 2. Fit the Multi-Logit Model
+model <- multinom(CI_Combined ~ VIX + SANFRAN + BEX, data = training_set)
+
+# 3. Predict Probabilities
+train_prob <- predict(model, newdata = training_set, "probs")
+test_prob <- predict(model, newdata = testing_set, "probs")
+
+# Add probabilities to the datasets
+training_set$Prob_Calm <- train_prob[,1]
+training_set$Prob_PreCrash <- train_prob[,2]
+training_set$Prob_Crash <- train_prob[,3]
+
+testing_set$Prob_Calm <- test_prob[,1]
+testing_set$Prob_PreCrash <- test_prob[,2]
+testing_set$Prob_Crash <- test_prob[,3]
+
+# 4. Visualize Results
+# Plot for in-sample data
+p_in <- ggplot(training_set, aes(x = Date)) +
+  geom_line(aes(y = AnnualizedVolatility, color = "Volatility")) +
+  geom_line(aes(y = Prob_Calm, color = "Calm Period")) +
+  geom_line(aes(y = Prob_PreCrash, color = "Pre-Crash")) +
+  geom_line(aes(y = Prob_Crash, color = "Crash")) +
+  scale_color_manual(values = c("Volatility" = "blue", "Calm Period" = "green", "Pre-Crash" = "yellow", "Crash" = "red")) +
+  labs(title = "In-Sample Data: Market States and Volatility", x = "Date", y = "Value")
+
+# Plot for out-of-sample data
+p_out <- ggplot(testing_set, aes(x = Date)) +
+  geom_line(aes(y = AnnualizedVolatility, color = "Volatility")) +
+  geom_line(aes(y = Prob_Calm, color = "Calm Period")) +
+  geom_line(aes(y = Prob_PreCrash, color = "Pre-Crash")) +
+  geom_line(aes(y = Prob_Crash, color = "Crash")) +
+  scale_color_manual(values = c("Volatility" = "blue", "Calm Period" = "green", "Pre-Crash" = "yellow", "Crash" = "red")) +
+  labs(title = "Out-of-Sample Data: Market States and Volatility", x = "Date", y = "Value")
+
+# 5. Summarize Results
+# Summary table for in-sample data
+summary_table_in <- summary(model)
+
+# Summary table for out-of-sample data
+# (Can include confusion matrix or other accuracy measures if needed)
+
+# Display the plots
+print(p_in)
+print(p_out)
+
+# Display summary tables
+print(summary_table_in)
+
+
+#--Calculating the probabilities------
+# Assuming 'model' is your fitted multinomial logistic regression model
+coefficients <- coef(model)
+
+# Transpose the coefficient matrix for correct matrix multiplication
+coefficients <- t(coefficients)
+
+# Function to calculate log-odds for a given row of data
+calculate_log_odds <- function(row, coefficients) {
+  # Create the matrix for the independent variables (adding 1 for the intercept)
+  independent_vars <- as.matrix(cbind(1, row["VIX"], row["SANFRAN"], row["BEX"]), nrow = 1)
+  
+  # Calculate log-odds for each category (excluding the baseline)
+  log_odds <- independent_vars %*% coefficients
+  
+  # Add baseline category (log-odds = 0)
+  log_odds <- c(0, log_odds)
+  
+  return(log_odds)
+}
+
+# Function to calculate probabilities using softmax
+softmax <- function(log_odds) {
+  exp_log_odds <- exp(log_odds)
+  probabilities <- exp_log_odds / sum(exp_log_odds)
+  return(probabilities)
+}
+
+# Apply the functions to each row in the dataset
+probabilities_matrix <- t(apply(testing_set[, c("VIX", "SANFRAN", "BEX")], 1, function(row) softmax(calculate_log_odds(row, coefficients))))
+
+# Add these probabilities as new columns to the dataset
+testing_set$Prob_Calm <- probabilities_matrix[, 1]
+testing_set$Prob_PreCrash <- probabilities_matrix[, 2]
+testing_set$Prob_Crash <- probabilities_matrix[, 3]
+
+# View the updated dataset
+head(testing_set)
+
+#--Smoothing and plotting the MULTILOGIT-----
+library(zoo)  # for rollmean
+
+# Set window size for smoothing
+window_size <- 30
+
+# Apply rolling mean to each probability column
+testing_set$Smoothed_Prob_Calm <- zoo::rollmean(testing_set$Prob_Calm, k = window_size, align = "center", fill = NA)
+testing_set$Smoothed_Prob_PreCrash <- zoo::rollmean(testing_set$Prob_PreCrash, k = window_size, align = "center", fill = NA)
+testing_set$Smoothed_Prob_Crash <- zoo::rollmean(testing_set$Prob_Crash, k = window_size, align = "center", fill = NA)
+
+# Update the plot with smoothed probabilities
+p <- ggplot(testing_set, aes(x = Date)) + 
+  # Plot Annualized Volatility on the left y-axis
+  geom_line(aes(y = AnnualizedVolatility, color = "Annualized Volatility")) +
+  scale_y_continuous(name = "Annualized Volatility (%)", 
+                     labels = scales::percent_format(scale = 1),
+                     sec.axis = sec_axis(~ ., name = "Probability", labels = scales::percent_format(scale = 1))) +
+  # Add smoothed probabilities on the right y-axis, using the secondary axis transformation
+  geom_line(aes(y = Smoothed_Prob_Calm * max(testing_set$AnnualizedVolatility), color = "Smoothed Calm Probability")) +
+  geom_line(aes(y = Smoothed_Prob_PreCrash * max(testing_set$AnnualizedVolatility), color = "Smoothed Pre-Crash Probability")) +
+  geom_line(aes(y = Smoothed_Prob_Crash * max(testing_set$AnnualizedVolatility), color = "Smoothed Crash Probability")) +
+  # Color settings
+  scale_color_manual(values = c("Annualized Volatility" = "black", 
+                                "Smoothed Calm Probability" = "blue", 
+                                "Smoothed Pre-Crash Probability" = "orange", 
+                                "Smoothed Crash Probability" = "red")) +
+  labs(title = "Smoothed Market State Probabilities and Annualized Volatility Over Time", 
+       x = "Date", y = "Value") + geom_vline(xintercept = as.Date("2022-01-03"), color = "green", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2022-10-12"), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2021-01-03"), color = "magenta", linetype = "dashed") + 
+  geom_vline(xintercept = as.Date("2020-03-23"), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2020-02-19"), color = "green", linetype = "dashed") 
+
+# Print the plot
+print(p)
+
+#----TEST STATISTICS----
+summary(model)
+
+AIC(model)
+
+# Predicted classes
+predicted_classes <- predict(model, newdata = testing_set, "class")
+
+# Actual classes
+actual_classes <- testing_set$CI_Combined
+
+# Confusion Matrix
+confusion_matrix <- table(Predicted = predicted_classes, Actual = actual_classes)
+
+# Calculate Accuracy
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+
+# Print the confusion matrix and accuracy
+print(confusion_matrix)
+print(paste("Accuracy:", accuracy))
+
+library(lmtest)
+
+# Likelihood ratio test
+lrtest_result <- lrtest(model)
+print(lrtest_result)
+
+
+#---- NEW plotting each variable separately-----
+
+# Fit Separate Models and Calculate Probabilities VIX
+
+# Fit a model for VIX
+model_vix <- multinom(CI_Combined ~ VIX, data = training_set)
+
+# Predict probabilities for the testing set
+test_prob_vix <- predict(model_vix, newdata = testing_set, "probs")
+
+# Add probabilities to the testing set
+testing_set$Prob_Calm_VIX <- test_prob_vix[,1]
+testing_set$Prob_PreCrash_VIX <- test_prob_vix[,2]
+testing_set$Prob_Crash_VIX <- test_prob_vix[,3]
+
+# Apply smoothing
+window_size <- 30
+testing_set$Smoothed_Prob_Calm_VIX <- zoo::rollmean(testing_set$Prob_Calm_VIX, k = window_size, align = "center", fill = NA)
+testing_set$Smoothed_Prob_PreCrash_VIX <- zoo::rollmean(testing_set$Prob_PreCrash_VIX, k = window_size, align = "center", fill = NA)
+testing_set$Smoothed_Prob_Crash_VIX <- zoo::rollmean(testing_set$Prob_Crash_VIX, k = window_size, align = "center", fill = NA)
+
+# Create a plot for VIX
+plot_vix <- ggplot(testing_set, aes(x = Date)) + 
+  geom_line(aes(y = AnnualizedVolatility, color = "Annualized Volatility")) +
+  scale_y_continuous(name = "Annualized Volatility (%)", 
+                     labels = scales::percent_format(scale = 1),
+                     sec.axis = sec_axis(~ ., name = "Probability", labels = scales::percent_format(scale = 1))) +
+  geom_line(aes(y = Smoothed_Prob_Calm_VIX*100, color = "Smoothed Calm Probability (VIX)")) +
+  geom_line(aes(y = Smoothed_Prob_PreCrash_VIX*100, color = "Smoothed Pre-Crash Probability (VIX)")) +
+  geom_line(aes(y = Smoothed_Prob_Crash_VIX*100, color = "Smoothed Crash Probability (VIX)")) +
+  scale_color_manual(values = c("Annualized Volatility" = "black", 
+                                "Smoothed Calm Probability (VIX)" = "blue", 
+                                "Smoothed Pre-Crash Probability (VIX)" = "orange", 
+                                "Smoothed Crash Probability (VIX)" = "red")) +
+  labs(title = "VIX, Market State Probabilities and Annualized Volatility Over Time", 
+       x = "Date", y = "Value")
+
+# Print the plot for VIX
+print(plot_vix)
+
+
+
+# Fit Separate Models and Calculate Probabilities SANFRAN
+# Fit a model for SANFRAN
+model_sanfran <- multinom(CI_Combined ~ SANFRAN, data = training_set)
+
+# Predict probabilities for the testing set
+test_prob_sanfran <- predict(model_sanfran, newdata = testing_set, "probs")
+
+# Add probabilities to the testing set
+testing_set$Prob_Calm_SANFRAN <- test_prob_sanfran[,1]
+testing_set$Prob_PreCrash_SANFRAN <- test_prob_sanfran[,2]
+testing_set$Prob_Crash_SANFRAN <- test_prob_sanfran[,3]
+
+# Apply smoothing
+testing_set$Smoothed_Prob_Calm_SANFRAN <- zoo::rollmean(testing_set$Prob_Calm_SANFRAN, k = window_size, align = "center", fill = NA)
+testing_set$Smoothed_Prob_PreCrash_SANFRAN <- zoo::rollmean(testing_set$Prob_PreCrash_SANFRAN, k = window_size, align = "center", fill = NA)
+testing_set$Smoothed_Prob_Crash_SANFRAN <- zoo::rollmean(testing_set$Prob_Crash_SANFRAN, k = window_size, align = "center", fill = NA)
+
+# Create a plot for SANFRAN
+plot_sanfran <- ggplot(testing_set, aes(x = Date)) + 
+  geom_line(aes(y = AnnualizedVolatility, color = "Annualized Volatility")) +
+  scale_y_continuous(name = "Annualized Volatility (%)", 
+                     labels = scales::percent_format(scale = 1),
+                     sec.axis = sec_axis(~ ., name = "Probability", labels = scales::percent_format(scale = 1))) +
+  geom_line(aes(y = Smoothed_Prob_Calm_SANFRAN*100, color = "Smoothed Calm Probability (SANFRAN)")) +
+  geom_line(aes(y = Smoothed_Prob_PreCrash_SANFRAN*100, color = "Smoothed Pre-Crash Probability (SANFRAN)")) +
+  geom_line(aes(y = Smoothed_Prob_Crash_SANFRAN*100, color = "Smoothed Crash Probability (SANFRAN)")) +
+  scale_color_manual(values = c("Annualized Volatility" = "black", 
+                                "Smoothed Calm Probability (SANFRAN)" = "blue", 
+                                "Smoothed Pre-Crash Probability (SANFRAN)" = "orange", 
+                                "Smoothed Crash Probability (SANFRAN)" = "red")) +
+  labs(title = "SANFRAN, Market State Probabilities and Annualized Volatility Over Time", 
+       x = "Date", y = "Value")
+
+# Print the plot for SANFRAN
+print(plot_sanfran)
+
+
+# Fit a model for BEX
+model_bex <- multinom(CI_Combined ~ BEX, data = training_set)
+
+# Predict probabilities for the testing set
+test_prob_bex <- predict(model_bex, newdata = testing_set, "probs")
+
+# Add probabilities to the testing set
+testing_set$Prob_Calm_BEX <- test_prob_bex[,1]
+testing_set$Prob_PreCrash_BEX <- test_prob_bex[,2]
+testing_set$Prob_Crash_BEX <- test_prob_bex[,3]
+
+# Apply smoothing
+testing_set$Smoothed_Prob_Calm_BEX <- zoo::rollmean(testing_set$Prob_Calm_BEX, k = window_size, align = "center", fill = NA)
+testing_set$Smoothed_Prob_PreCrash_BEX <- zoo::rollmean(testing_set$Prob_PreCrash_BEX, k = window_size, align = "center", fill = NA)
+testing_set$Smoothed_Prob_Crash_BEX <- zoo::rollmean(testing_set$Prob_Crash_BEX, k = window_size, align = "center", fill = NA)
+
+# Create a plot for BEX
+plot_bex <- ggplot(testing_set, aes(x = Date)) + 
+  geom_line(aes(y = AnnualizedVolatility, color = "Annualized Volatility")) +
+  scale_y_continuous(name = "Annualized Volatility (%)", 
+                     labels = scales::percent_format(scale = 1),
+                     sec.axis = sec_axis(~ ., name = "Probability", labels = scales::percent_format(scale = 1))) +
+  geom_line(aes(y = Smoothed_Prob_Calm_BEX*100, color = "Smoothed Calm Probability (BEX)")) +
+  geom_line(aes(y = Smoothed_Prob_PreCrash_BEX*100, color = "Smoothed Pre-Crash Probability (BEX)")) +
+  geom_line(aes(y = Smoothed_Prob_Crash_BEX*100, color = "Smoothed Crash Probability (BEX)")) +
+  scale_color_manual(values = c("Annualized Volatility" = "black", 
+                                "Smoothed Calm Probability (BEX)" = "blue", 
+                                "Smoothed Pre-Crash Probability (BEX)" = "orange", 
+                                "Smoothed Crash Probability (BEX)" = "red")) +
+  labs(title = "BEX, Market State Probabilities and Annualized Volatility Over Time", 
+       x = "Date", y = "Value")
+
+# Print the plot for BEX
+print(plot_bex)
