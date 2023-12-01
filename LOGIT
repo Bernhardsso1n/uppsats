@@ -1,129 +1,156 @@
 #Stage 1------------------------------------------------------------------------
 #Specify out of sample and in sample Peiods
-  Merged_OLS_OOS <- subset(Merged_OLS, Date >= "2010-01-02" & Date <= "2023-01-04")
-  Merged_OLS_IS <- subset(Merged_OLS, Date >= "1990-05-24" & Date <= "2010-01-01")
+Merged_OLS_OOS <- subset(Merged_OLS, Date >= "2010-01-02" & Date <= "2023-01-04")
+Merged_OLS_IS <- subset(Merged_OLS, Date >= "1990-05-24" & Date <= "2010-01-01")
 #Create the model for logit regression
-  model <- glm(CI2 ~ + VIX + SANFRAN + BEX, data = Merged_OLS_IS, family = binomial(link = "logit"))
+model <- glm(CI2 ~ + VIX + SANFRAN + BEX, data = Merged_OLS_IS, family = binomial(link = "logit"))
 # Calculate the log-odds using the coefficients from your model
-  #Log-odds for indicators
-    log_odds_intercept <- coef(model)["(Intercept)"]
-    log_odds_VIX <- coef(model)["VIX"] * Merged_OLS_OOS$VIX
-    log_odds_SANFRAN <- coef(model)["SANFRAN"] * Merged_OLS_OOS$SANFRAN
-    log_odds_BEX <- coef(model)["BEX"] * Merged_OLS_OOS$BEX
-  #Log-odds for all indicators
-    log_odds_all <- coef(model)["(Intercept)"] + coef(model)["VIX"] * Merged_OLS_OOS$VIX + 
-      coef(model)["SANFRAN"] * Merged_OLS_OOS$SANFRAN + coef(model)["BEX"] * Merged_OLS_OOS$BEX
+#Log-odds for indicators
+log_odds_intercept <- coef(model)["(Intercept)"]
+log_odds_VIX <- coef(model)["VIX"] * Merged_OLS_OOS$VIX
+log_odds_SANFRAN <- coef(model)["SANFRAN"] * Merged_OLS_OOS$SANFRAN
+log_odds_BEX <- coef(model)["BEX"] * Merged_OLS_OOS$BEX
+#Log-odds for all indicators
+log_odds_all <- coef(model)["(Intercept)"] + coef(model)["VIX"] * Merged_OLS_OOS$VIX + 
+  coef(model)["SANFRAN"] * Merged_OLS_OOS$SANFRAN + coef(model)["BEX"] * Merged_OLS_OOS$BEX
 # Convert log-odds to probability
-    probability_VIX <- 1 / (1 + exp(-log_odds_VIX))
-    probability_SANFRAN <- 1 / (1 + exp(-log_odds_SANFRAN))
-    probability_BEX <- 1 / (1 + exp(-log_odds_BEX))
-    probability_all <- 1 / (1 + exp(-log_odds_all))
+probability_VIX <- 1 / (1 + exp(-log_odds_VIX))
+probability_SANFRAN <- 1 / (1 + exp(-log_odds_SANFRAN))
+probability_BEX <- 1 / (1 + exp(-log_odds_BEX))
+probability_all <- 1 / (1 + exp(-log_odds_all))
 #Print probabilities, summary and plot
-  #Print
-    print(probability_VIX)
-    print(probability_SANFRAN)
-    print(probability_BEX)
-  #Summary
-    summary(model)
-  #Plot
-    plot(probability_BEX)
-    plot(probability_SANFRAN)
-    plot(probability_VIX)
+#Print
+print(probability_VIX)
+print(probability_SANFRAN)
+print(probability_BEX)
+#Summary
+summary(model)
+#Plot
+plot(probability_BEX)
+plot(probability_SANFRAN)
+plot(probability_VIX)
+
+#----TEST STATISTICS----
+summary(model)
+
+AIC(model)
+
+# Predicted classes
+predicted_classes <- predict(model, newdata = Merged_OLS_OOS, type = "response") > 0.5
+
+# Actual classes
+actual_classes <- Merged_OLS_OOS$CI2
+
+# Confusion Matrix
+confusion_matrix <- table(Predicted = predicted_classes, Actual = actual_classes)
+
+# Calculate Accuracy
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+
+# Print the confusion matrix and accuracy
+print(confusion_matrix)
+print(paste("Accuracy:", accuracy))
+
+
+
+library(lmtest)
+lrtest_result <- lrtest(model, null = glm(CI2 ~ 1, data = Merged_OLS_IS, family = binomial(link = "logit")))
+print(lrtest_result)
 
 #Stage 2------------------------------------------------------------------------
 #Define dates and create dataframes
-  # Define the start and end dates
-    dates <- Merged_OLS_OOS$Date
-  # Create a data frame
-    data_df_SANFRAN <- data.frame(Date = as.Date(dates), Probability = probability_SANFRAN)
-    data_df_BEX <- data.frame(Date = as.Date(dates), Probability = probability_BEX)
-    data_df_VIX <- data.frame(Date = as.Date(dates), Probability = probability_VIX)
-    data_df_all <- data.frame(Date = as.Date(dates), Probability = probability_all)
+# Define the start and end dates
+dates <- Merged_OLS_OOS$Date
+# Create a data frame
+data_df_SANFRAN <- data.frame(Date = as.Date(dates), Probability = probability_SANFRAN)
+data_df_BEX <- data.frame(Date = as.Date(dates), Probability = probability_BEX)
+data_df_VIX <- data.frame(Date = as.Date(dates), Probability = probability_VIX)
+data_df_all <- data.frame(Date = as.Date(dates), Probability = probability_all)
 
 #Create subset of GSPC for plot
-  # Specify the start and end dates
-    start_date <- as.Date("2010-01-02")
-    end_date <- as.Date("2023-01-04")
+# Specify the start and end dates
+start_date <- as.Date("2010-01-02")
+end_date <- as.Date("2023-01-04")
 
-  # Subset the GSPC data frame to include only the desired date range
-    GSPC_subset <- GSPC[GSPC$Date >= start_date & GSPC$Date <= end_date, ]
+# Subset the GSPC data frame to include only the desired date range
+GSPC_subset <- GSPC[GSPC$Date >= start_date & GSPC$Date <= end_date, ]
 
 #Stage 3------------------------------------------------------------------------
 #Plot SANFRAN probability over annualized volatility
-  # Create a plot with two y-axes
-    p_SANFRAN <- ggplot() +
-      geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
-      geom_line(data = data_df_SANFRAN, aes(x = Date, y = Probability), color = "red", linetype = "solid") +
-      scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~., name = "Probability")) +
-      labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
-  # Print the plot
-    print(p_SANFRAN)
+# Create a plot with two y-axes
+p_SANFRAN <- ggplot() +
+  geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
+  geom_line(data = data_df_SANFRAN, aes(x = Date, y = Probability), color = "red", linetype = "solid") +
+  scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~., name = "Probability")) +
+  labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
+# Print the plot
+print(p_SANFRAN)
 
 #Plot VIX probability over annualized volatility
-  # Create a plot with two y-axes
-    p_VIX <- ggplot() +
-      geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
-      geom_line(data = data_df_VIX, aes(x = Date, y = Probability), color = "red", linetype = "solid") +
-      scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~., name = "Probability")) +
-      labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
-  # Print the plot
-    print(p_VIX)
+# Create a plot with two y-axes
+p_VIX <- ggplot() +
+  geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
+  geom_line(data = data_df_VIX, aes(x = Date, y = Probability), color = "red", linetype = "solid") +
+  scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~., name = "Probability")) +
+  labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
+# Print the plot
+print(p_VIX)
 
 #Plot BEX probability over annualized volatility
-  # Create the plot BEX
-    p_BEX <- ggplot() +
-      geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
-      geom_line(data = data_df_BEX, aes(x = Date, y = Probability * 20), color = "red", linetype = "solid") +  # Scale Probability to match the S&P 500 scale
-      scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~./100, name = "Probability")) +  # Scale the secondary axis back to the original range
-      labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
-  # Print the plot
-    print(p_BEX)
+# Create the plot BEX
+p_BEX <- ggplot() +
+  geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
+  geom_line(data = data_df_BEX, aes(x = Date, y = Probability * 20), color = "red", linetype = "solid") +  # Scale Probability to match the S&P 500 scale
+  scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~./100, name = "Probability")) +  # Scale the secondary axis back to the original range
+  labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
+# Print the plot
+print(p_BEX)
 
 #Plot probability over annualized volatility
-  # Create the plot all
-    p <- ggplot() +
-      geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
-      geom_line(data = data_df_all, aes(x = Date, y = Probability * 20), color = "red", linetype = "solid") +  # Scale Probability to match the S&P 500 scale
-      scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~./100, name = "Probability")) +  # Scale the secondary axis back to the original range
-      labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
-  # Print the plot
-    print(p)
+# Create the plot all
+p <- ggplot() +
+  geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), color = "blue", linetype = "solid") +
+  geom_line(data = data_df_all, aes(x = Date, y = Probability * 20), color = "red", linetype = "solid") +  # Scale Probability to match the S&P 500 scale
+  scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~./100, name = "Probability")) +  # Scale the secondary axis back to the original range
+  labs(x = "Date", title = "S&P 500 Price and Probability Over Time")
+# Print the plot
+print(p)
 
 #Plot smoothed probability over annualized volatility
-  #Specify smoother probability  
-    window_size <- 100
-    data_df_all$Smoothed_Probability <- zoo::rollmean(data_df_all$Probability, k = window_size, align = "center", fill = NA)
-   #Create the plot 
-    p_smooth <- ggplot() + geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), 
-                 color = "blue", linetype = "solid") + 
-                 geom_line(data = data_df_all, 
-                  aes(x = Date, y = Smoothed_Probability * 20), 
-                  color = "red", linetype = "solid") + 
-                  scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~./100, name = "Probability"))  + 
-                  labs(x = "Date", title = "S&P 500 Price and Probability Over Time") +
-      geom_vline(xintercept = as.Date("2018-10-03"), color = "green", linetype = "dashed") +
-      geom_vline(xintercept = as.Date("2020-02-19"), color = "green", linetype = "dashed") +
-      geom_vline(xintercept = as.Date("2022-01-03"), color = "green", linetype = "dashed") +
-      geom_vline(xintercept = as.Date("2018-12-24"), color = "red", linetype = "dashed") +
-      geom_vline(xintercept = as.Date("2020-03-23"), color = "red", linetype = "dashed") +
-      geom_vline(xintercept = as.Date("2022-10-12"), color = "red", linetype = "dashed")
-    #Print the plot
-      print(p_smooth)
+#Specify smoother probability  
+window_size <- 100
+data_df_all$Smoothed_Probability <- zoo::rollmean(data_df_all$Probability, k = window_size, align = "center", fill = NA)
+#Create the plot 
+p_smooth <- ggplot() + geom_line(data = GSPC_subset, aes(x = Date, y = AnnualizedVolatility), 
+                                 color = "blue", linetype = "solid") + 
+  geom_line(data = data_df_all, 
+            aes(x = Date, y = Smoothed_Probability * 20), 
+            color = "red", linetype = "solid") + 
+  scale_y_continuous(name = "S&P 500 Price", sec.axis = sec_axis(~./100, name = "Probability"))  + 
+  labs(x = "Date", title = "S&P 500 Price and Probability Over Time") +
+  geom_vline(xintercept = as.Date("2018-10-03"), color = "green", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2020-02-19"), color = "green", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2022-01-03"), color = "green", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2018-12-24"), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2020-03-23"), color = "red", linetype = "dashed") +
+  geom_vline(xintercept = as.Date("2022-10-12"), color = "red", linetype = "dashed")
+#Print the plot
+print(p_smooth)
 
 #Stage 3.1----------------------------------------------------------------------
 #Create a time series plot all
-  ggplot(data_df_all, aes(x = Date, y = Probability)) +
-    geom_line() +  # Line plot
-    labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
+ggplot(data_df_all, aes(x = Date, y = Probability)) +
+  geom_line() +  # Line plot
+  labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
 #Create a time series plot BEX
-  ggplot(data_df_BEX, aes(x = Date, y = Probability)) +
-    geom_line() +  # Line plot
-    labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
+ggplot(data_df_BEX, aes(x = Date, y = Probability)) +
+  geom_line() +  # Line plot
+  labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
 #Create a time series plot VIX
-  ggplot(data_df_VIX, aes(x = Date, y = Probability)) +
-    geom_line() +  # Line plot
-    labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
+ggplot(data_df_VIX, aes(x = Date, y = Probability)) +
+  geom_line() +  # Line plot
+  labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
 #Create a time series plot SANFRAN
-  ggplot(data_df_SANFRAN, aes(x = Date, y = Probability)) +
-    geom_line() +  # Line plot
-    labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
+ggplot(data_df_SANFRAN, aes(x = Date, y = Probability)) +
+  geom_line() +  # Line plot
+  labs(x = "Date", y = "Probability", title = "Probability Over Specified Dates")
